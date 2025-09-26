@@ -7,8 +7,8 @@ let retry_times = 5;
 
 class Setting extends Base
 {
-    actions = {install: '系统安装', login: '账户登录', index: '系统设置'};
-    buttons = {install: '安装', login: '登录', index: '设置'};
+    actions = {install: '系统安装', login: '账户登录', index: '系统设置', add: '添加push_key', delete: '删除push_key', list: '获取push_key列表'};
+    buttons = {install: '安装', login: '登录', index: '设置', add: '添加', delete: '删除', list: '列表'};
 
     async _init() {
         super._init();
@@ -28,15 +28,18 @@ class Setting extends Base
 
         if(this.$request.isGet()) {
             const push_key = this.$config.setting.push_keys.join(',');
+            const admin_token = this.$config.setting.admin_token || '';
             this.$assign('push_key', push_key);
+            this.$assign('admin_token', admin_token);
             this.$assign('action', 'index');
             return this.$fetch();
         }
         
         const push_key = this._parsePushkey(this.$request.query('push_key'));
+        const admin_token = this.$request.query('admin_token') || this.$config.setting.admin_token || '';
         const user = this.$config.setting.user;
         const password = this.$config.setting.password;
-        await this._writeSettingFile(push_key, user, password);
+        await this._writeSettingFile(push_key, user, password, admin_token);
         this.$success('保存成功！');
     }
 
@@ -92,6 +95,7 @@ class Setting extends Base
         }
 
         const push_key = this._parsePushkey(this.$request.query('push_key'));
+        const admin_token = this.$request.query('admin_token') || this._generateToken();
         let user = this.$request.query('user');
         let password = this.$request.query('password');
         if(user == '' || password == '') {
@@ -99,7 +103,7 @@ class Setting extends Base
         }
         user = this._md5(user);
         password = this._md5(password);
-        await this._writeSettingFile(push_key, user, password);
+        await this._writeSettingFile(push_key, user, password, admin_token);
 
         this.$success('安装成功！', 'index');
     }
@@ -109,8 +113,112 @@ class Setting extends Base
         return `'${push_key}'`;
     }
 
-    async _writeSettingFile(push_key, user, password) {
-        const setting_str = `module.exports = {\n    push_keys: [${push_key}],\n    user: '${user}',\n    password: '${password}'\n};`;
+    async add() {
+        if(!this.$config.setting) {
+            return this.$error('系统未安装！');
+        }
+
+        // 支持两种鉴权方式：登录用户或admin_token
+        if(!this._isLogin() && !this._isValidToken()) {
+            return this.$error('请先登录或提供有效的admin_token！');
+        }
+
+        const push_key = this.$request.query('push_key');
+        if(!push_key || typeof push_key !== 'string') {
+            return this.$error('push_key参数不能为空且必须为字符串！');
+        }
+
+        // 检查push_key格式（简单验证，可根据需要调整）
+        if(push_key.length < 3 || push_key.length > 50) {
+            return this.$error('push_key长度必须在3-50个字符之间！');
+        }
+
+        // 检查是否已存在
+        if(this.$config.setting.push_keys.includes(push_key)) {
+            return this.$error('push_key已存在！');
+        }
+
+        // 添加新的push_key
+        const new_push_keys = [...this.$config.setting.push_keys, push_key];
+        const push_keys_str = new_push_keys.map(key => `'${key}'`).join(', ');
+        const user = this.$config.setting.user;
+        const password = this.$config.setting.password;
+        const admin_token = this.$config.setting.admin_token;
+
+        await this._writeSettingFile(push_keys_str, user, password, admin_token);
+        this.$success('push_key添加成功！', {push_key: push_key});
+    }
+
+    async delete() {
+        if(!this.$config.setting) {
+            return this.$error('系统未安装！');
+        }
+
+        // 支持两种鉴权方式：登录用户或admin_token
+        if(!this._isLogin() && !this._isValidToken()) {
+            return this.$error('请先登录或提供有效的admin_token！');
+        }
+
+        const push_key = this.$request.query('push_key');
+        if(!push_key || typeof push_key !== 'string') {
+            return this.$error('push_key参数不能为空且必须为字符串！');
+        }
+
+        // 检查push_key是否存在
+        if(!this.$config.setting.push_keys.includes(push_key)) {
+            return this.$error('push_key不存在！');
+        }
+
+        // 检查是否为最后一个push_key
+        if(this.$config.setting.push_keys.length === 1) {
+            return this.$error('不能删除最后一个push_key！');
+        }
+
+        // 删除push_key
+        const new_push_keys = this.$config.setting.push_keys.filter(key => key !== push_key);
+        const push_keys_str = new_push_keys.map(key => `'${key}'`).join(', ');
+        const user = this.$config.setting.user;
+        const password = this.$config.setting.password;
+        const admin_token = this.$config.setting.admin_token;
+
+        await this._writeSettingFile(push_keys_str, user, password, admin_token);
+        this.$success('push_key删除成功！', {push_key: push_key});
+    }
+
+    async list() {
+        if(!this.$config.setting) {
+            return this.$error('系统未安装！');
+        }
+
+        // 支持两种鉴权方式：登录用户或admin_token
+        if(!this._isLogin() && !this._isValidToken()) {
+            return this.$error('请先登录或提供有效的admin_token！');
+        }
+
+        this.$success('获取push_key列表成功！', {
+            push_keys: this.$config.setting.push_keys,
+            count: this.$config.setting.push_keys.length
+        });
+    }
+
+    // 验证admin_token是否有效
+    _isValidToken() {
+        const token = this.$request.query('admin_token') || this.$request.header('admin-token') || this.$request.header('authorization')?.replace('Bearer ', '');
+        return token && this.$config.setting && this.$config.setting.admin_token && token === this.$config.setting.admin_token;
+    }
+
+    // 生成随机token
+    _generateToken() {
+        const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+        let result = '';
+        for (let i = 0; i < 32; i++) {
+            result += chars.charAt(Math.floor(Math.random() * chars.length));
+        }
+        return result;
+    }
+
+    async _writeSettingFile(push_key, user, password, admin_token = '') {
+        const setting_str = `module.exports = {\n    push_keys: [${push_key}],\n    user: '${user}',\n    password: '${password}',\n    admin_token: '${admin_token}'\n};`;
         const setting_file = path.join(this.$config.app.base_dir, './config/setting.js');
         await require('fs/promises').writeFile(setting_file, setting_str);
         require.cache[setting_file] && delete(require.cache[setting_file]);
