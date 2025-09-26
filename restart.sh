@@ -37,8 +37,35 @@ else
     echo -e "${GREEN}   ✓ 未发现旧镜像${NC}"
 fi
 
-# 3. 构建新镜像
-echo -e "${YELLOW}3. 构建新镜像...${NC}"
+# 3. 拉取最新代码
+echo -e "${YELLOW}3. 拉取最新代码...${NC}"
+echo -e "${BLUE}   git fetch origin${NC}"
+if git fetch origin; then
+    echo -e "${GREEN}   ✓ 代码拉取成功${NC}"
+
+    # 检查是否有远程更新
+    LOCAL=$(git rev-parse HEAD)
+    REMOTE=$(git rev-parse @{u} 2>/dev/null || echo "")
+
+    if [ -n "$REMOTE" ] && [ "$LOCAL" != "$REMOTE" ]; then
+        echo -e "${YELLOW}   发现远程更新，正在合并...${NC}"
+        echo -e "${BLUE}   git pull origin$(git branch --show-current)${NC}"
+        if git pull origin $(git branch --show-current); then
+            echo -e "${GREEN}   ✓ 代码更新成功${NC}"
+        else
+            echo -e "${RED}   ✗ 代码更新失败，请手动解决冲突${NC}"
+            exit 1
+        fi
+    else
+        echo -e "${GREEN}   ✓ 代码已是最新版本${NC}"
+    fi
+else
+    echo -e "${RED}   ✗ 代码拉取失败，请检查网络连接和Git配置${NC}"
+    exit 1
+fi
+
+# 4. 构建新镜像
+echo -e "${YELLOW}4. 构建新镜像...${NC}"
 echo -e "${BLUE}   docker build -f docker/Dockerfile -t ${IMAGE_NAME}:${IMAGE_TAG} .${NC}"
 if docker build -f docker/Dockerfile -t ${IMAGE_NAME}:${IMAGE_TAG} .; then
     echo -e "${GREEN}   ✓ 镜像构建成功${NC}"
@@ -47,8 +74,8 @@ else
     exit 1
 fi
 
-# 4. 创建配置目录（如果不存在）
-echo -e "${YELLOW}4. 准备配置目录...${NC}"
+# 5. 创建配置目录（如果不存在）
+echo -e "${YELLOW}5. 准备配置目录...${NC}"
 CONFIG_DIR="$PWD/pushme-server/config"
 if [ ! -d "$CONFIG_DIR" ]; then
     echo -e "${YELLOW}   创建配置目录: $CONFIG_DIR${NC}"
@@ -56,8 +83,8 @@ if [ ! -d "$CONFIG_DIR" ]; then
 fi
 echo -e "${GREEN}   ✓ 配置目录准备完成${NC}"
 
-# 5. 运行新容器
-echo -e "${YELLOW}5. 启动新容器...${NC}"
+# 6. 运行新容器
+echo -e "${YELLOW}6. 启动新容器...${NC}"
 DOCKER_CMD="docker run -dit \
   -p 3010:3010 \
   -p 3100:3100 \
@@ -76,8 +103,8 @@ else
     exit 1
 fi
 
-# 6. 检查容器状态
-echo -e "${YELLOW}6. 检查容器状态...${NC}"
+# 7. 检查容器状态
+echo -e "${YELLOW}7. 检查容器状态...${NC}"
 sleep 3
 if docker ps --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}" | grep ${CONTAINER_NAME}; then
     echo -e "${GREEN}   ✓ 容器运行正常${NC}"
@@ -87,7 +114,7 @@ else
     exit 1
 fi
 
-# 7. 显示访问信息
+# 8. 显示访问信息
 echo -e "${GREEN}"
 echo "=== 部署完成 ==="
 echo "Web管理界面: http://localhost:3010"
