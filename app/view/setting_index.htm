@@ -11,6 +11,18 @@
                     <input type="text" name="push_key" value="{{push_key || ''}}" placeholder="请输入push_key，多个用','隔开" autocomplete="off" class="layui-input">
                 </div>
             </div>
+            <div class="layui-form-item">
+                <label class="layui-form-label">admin_token</label>
+                <div class="layui-input-block">
+                    <div class="layui-input-group">
+                        <input type="text" name="admin_token" id="admin_token" value="{{admin_token || ''}}" placeholder="管理员令牌，用于API访问" autocomplete="off" class="layui-input">
+                        <div class="layui-input-split layui-input-suffix" style="cursor: pointer;">
+                            <button type="button" class="layui-btn layui-btn-primary layui-btn-sm" id="generate_token">生成</button>
+                        </div>
+                    </div>
+                    <div class="layui-form-mid layui-word-aux">用于绕过登录验证直接访问API接口</div>
+                </div>
+            </div>
             {{/if}}
 
             {{if action != 'index'}}
@@ -44,6 +56,71 @@
                 </div>
             </div>
         </form>
+
+        {{if action == 'index'}}
+        <div class="layui-card" style="margin-top: 30px;">
+            <div class="layui-card-header">
+                <h3>API 使用说明</h3>
+            </div>
+            <div class="layui-card-body">
+                <p>使用 admin_token 可以绕过登录验证直接访问以下API接口：</p>
+
+                <div class="layui-collapse" lay-accordion="">
+                    <div class="layui-colla-item">
+                        <h2 class="layui-colla-title">添加 push_key</h2>
+                        <div class="layui-colla-content">
+                            <p><strong>接口：</strong> <code>POST /setting/add</code></p>
+                            <p><strong>参数：</strong></p>
+                            <ul>
+                                <li><code>push_key</code> - 要添加的push_key</li>
+                                <li><code>admin_token</code> - 管理员令牌</li>
+                            </ul>
+                            <p><strong>示例：</strong></p>
+                            <pre class="layui-code">curl -X POST "{{$request.protocol()}}://{{$request.host()}}/setting/add" \
+  -d "push_key=your_new_key&admin_token={{admin_token || 'your_admin_token'}}"</pre>
+                        </div>
+                    </div>
+
+                    <div class="layui-colla-item">
+                        <h2 class="layui-colla-title">删除 push_key</h2>
+                        <div class="layui-colla-content">
+                            <p><strong>接口：</strong> <code>POST /setting/delete</code></p>
+                            <p><strong>参数：</strong></p>
+                            <ul>
+                                <li><code>push_key</code> - 要删除的push_key</li>
+                                <li><code>admin_token</code> - 管理员令牌</li>
+                            </ul>
+                            <p><strong>示例：</strong></p>
+                            <pre class="layui-code">curl -X POST "{{$request.protocol()}}://{{$request.host()}}/setting/delete" \
+  -d "push_key=key_to_delete&admin_token={{admin_token || 'your_admin_token'}}"</pre>
+                        </div>
+                    </div>
+
+                    <div class="layui-colla-item">
+                        <h2 class="layui-colla-title">获取 push_key 列表</h2>
+                        <div class="layui-colla-content">
+                            <p><strong>接口：</strong> <code>GET /setting/list</code></p>
+                            <p><strong>参数：</strong></p>
+                            <ul>
+                                <li><code>admin_token</code> - 管理员令牌</li>
+                            </ul>
+                            <p><strong>示例：</strong></p>
+                            <pre class="layui-code">curl "{{$request.protocol()}}://{{$request.host()}}/setting/list?admin_token={{admin_token || 'your_admin_token'}}"</pre>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="layui-form-mid layui-word-aux" style="margin-top: 15px;">
+                    <p><strong>注意：</strong></p>
+                    <ul>
+                        <li>admin_token 也可以通过 HTTP Header 传递：<code>admin-token</code> 或 <code>Authorization: Bearer token</code></li>
+                        <li>请妥善保管 admin_token，避免泄露</li>
+                        <li>建议定期更换 admin_token</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+        {{/if}}
     </div>
 {{/block}}
 
@@ -52,6 +129,7 @@
     layui.use(function() {
         var layer = layui.layer;
         var form = layui.form;
+        var element = layui.element;
         var $ = layui.$;
       
         form.render().on('submit(send)', function(data) {
@@ -75,16 +153,48 @@
                 type: field.type
             };
     
-            // $.post('', field, function(result) {
-            //     if(result.state) {
-            //         layer.msg('发送成功！');
-            //         form.val('form', {title: '', content: ''});
-            //     } else {
-            //         layer.msg(result, {icon: 2});
-            //     }
-            // });
-            // return false;
+            $.post('', field, function(result) {
+                if(result.state) {
+                    layer.msg(result.msg || '保存成功！', {icon: 1});
+                    if(result.redirect) {
+                        setTimeout(() => {
+                            location.href = result.redirect;
+                        }, 1500);
+                    }
+                } else {
+                    layer.msg(result.msg || result, {icon: 2});
+                }
+            });
+            return false;
         });
+
+        // 生成admin_token
+        $('#generate_token').on('click', function() {
+            const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+            let token = '';
+            for (let i = 0; i < 32; i++) {
+                token += chars.charAt(Math.floor(Math.random() * chars.length));
+            }
+            $('#admin_token').val(token);
+            layer.msg('已生成新的admin_token', {icon: 1});
+        });
+
+        // 复制admin_token
+        $('#admin_token').on('dblclick', function() {
+            const token = $(this).val();
+            if(token) {
+                // 创建临时textarea来复制文本
+                const textarea = $('<textarea>');
+                $('body').append(textarea);
+                textarea.val(token).select();
+                document.execCommand('copy');
+                textarea.remove();
+                layer.msg('admin_token已复制到剪贴板', {icon: 1});
+            }
+        });
+
+        // 添加提示信息
+        $('#admin_token').attr('title', '双击可复制token到剪贴板');
     });
 </script>
 {{/block}}
