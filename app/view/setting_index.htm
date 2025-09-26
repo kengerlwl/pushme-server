@@ -76,7 +76,7 @@
                                 <li><code>admin_token</code> - 管理员令牌</li>
                             </ul>
                             <p><strong>示例：</strong></p>
-                            <pre class="layui-code">curl -X POST "{{$request.protocol()}}://{{$request.host()}}/setting/add" \
+                             <pre class="layui-code">curl -X POST "http://localhost:3010/setting/add" \
   -d "push_key=your_new_key&admin_token={{admin_token || 'your_admin_token'}}"</pre>
                         </div>
                     </div>
@@ -91,7 +91,7 @@
                                 <li><code>admin_token</code> - 管理员令牌</li>
                             </ul>
                             <p><strong>示例：</strong></p>
-                            <pre class="layui-code">curl -X POST "{{$request.protocol()}}://{{$request.host()}}/setting/delete" \
+                             <pre class="layui-code">curl -X POST "http://localhost:3010/setting/delete" \
   -d "push_key=key_to_delete&admin_token={{admin_token || 'your_admin_token'}}"</pre>
                         </div>
                     </div>
@@ -105,7 +105,7 @@
                                 <li><code>admin_token</code> - 管理员令牌</li>
                             </ul>
                             <p><strong>示例：</strong></p>
-                            <pre class="layui-code">curl "{{$request.protocol()}}://{{$request.host()}}/setting/list?admin_token={{admin_token || 'your_admin_token'}}"</pre>
+                             <pre class="layui-code">curl "http://localhost:3010/setting/list?admin_token={{admin_token || 'your_admin_token'}}"</pre>
                         </div>
                     </div>
                 </div>
@@ -154,11 +154,29 @@
             };
     
             $.post('', field, function(result) {
+                console.log('Response:', result); // 调试用
                 if(result.state) {
                     layer.msg(result.msg || '保存成功！', {icon: 1});
-                    if(result.redirect) {
+                    // 处理跳转逻辑，支持多种格式
+                    const redirectUrl = result.redirect || result.data;
+                    if(redirectUrl) {
                         setTimeout(() => {
-                            location.href = result.redirect;
+                            if(redirectUrl === 'index') {
+                                location.href = '/setting';
+                            } else if(redirectUrl.startsWith('/')) {
+                                location.href = redirectUrl;
+                            } else {
+                                location.href = '/' + redirectUrl;
+                            }
+                        }, 1500);
+                    } else {
+                        // 如果没有明确的跳转URL，根据当前action判断
+                        setTimeout(() => {
+                            if('{{action}}' === 'login') {
+                                location.href = '/setting';
+                            } else if('{{action}}' === 'install') {
+                                location.href = '/setting';
+                            }
                         }, 1500);
                     }
                 } else {

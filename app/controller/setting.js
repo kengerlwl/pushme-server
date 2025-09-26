@@ -19,14 +19,20 @@ class Setting extends Base
 
     async index() {
         if(!this.$config.setting) {
+            if(this._isApiRequest()) {
+                return this._jsonError('系统未安装！', 503);
+            }
             return this.$redirect('install');
         }
 
         if(!this._isLogin()) {
+            if(this._isApiRequest()) {
+                return this._jsonError('未登录或admin_token无效！', 401);
+            }
             return this.$redirect('login');
         }
 
-        if(this.$request.isGet()) {
+        if(this.$request.isGet() && !this._isApiRequest()) {
             const push_key = this.$config.setting.push_keys.join(',');
             const admin_token = this.$config.setting.admin_token || '';
             this.$assign('push_key', push_key);
@@ -40,6 +46,14 @@ class Setting extends Base
         const user = this.$config.setting.user;
         const password = this.$config.setting.password;
         await this._writeSettingFile(push_key, user, password, admin_token);
+
+        if(this._isApiRequest()) {
+            return this._jsonSuccess('保存成功！', {
+                push_keys: this.$config.setting.push_keys,
+                admin_token
+            });
+        }
+
         this.$success('保存成功！');
     }
 
@@ -115,27 +129,27 @@ class Setting extends Base
 
     async add() {
         if(!this.$config.setting) {
-            return this.$error('系统未安装！');
+            return this._jsonError('系统未安装！');
         }
 
         // 支持两种鉴权方式：登录用户或admin_token
         if(!this._isLogin() && !this._isValidToken()) {
-            return this.$error('请先登录或提供有效的admin_token！');
+            return this._jsonError('请先登录或提供有效的admin_token！');
         }
 
         const push_key = this.$request.query('push_key');
         if(!push_key || typeof push_key !== 'string') {
-            return this.$error('push_key参数不能为空且必须为字符串！');
+            return this._jsonError('push_key参数不能为空且必须为字符串！');
         }
 
         // 检查push_key格式（简单验证，可根据需要调整）
         if(push_key.length < 3 || push_key.length > 50) {
-            return this.$error('push_key长度必须在3-50个字符之间！');
+            return this._jsonError('push_key长度必须在3-50个字符之间！');
         }
 
         // 检查是否已存在
         if(this.$config.setting.push_keys.includes(push_key)) {
-            return this.$error('push_key已存在！');
+            return this._jsonError('push_key已存在！');
         }
 
         // 添加新的push_key
@@ -146,32 +160,32 @@ class Setting extends Base
         const admin_token = this.$config.setting.admin_token;
 
         await this._writeSettingFile(push_keys_str, user, password, admin_token);
-        this.$success('push_key添加成功！', {push_key: push_key});
+        return this._jsonSuccess('push_key添加成功！', {push_key: push_key});
     }
 
     async delete() {
         if(!this.$config.setting) {
-            return this.$error('系统未安装！');
+            return this._jsonError('系统未安装！');
         }
 
         // 支持两种鉴权方式：登录用户或admin_token
         if(!this._isLogin() && !this._isValidToken()) {
-            return this.$error('请先登录或提供有效的admin_token！');
+            return this._jsonError('请先登录或提供有效的admin_token！');
         }
 
         const push_key = this.$request.query('push_key');
         if(!push_key || typeof push_key !== 'string') {
-            return this.$error('push_key参数不能为空且必须为字符串！');
+            return this._jsonError('push_key参数不能为空且必须为字符串！');
         }
 
         // 检查push_key是否存在
         if(!this.$config.setting.push_keys.includes(push_key)) {
-            return this.$error('push_key不存在！');
+            return this._jsonError('push_key不存在！');
         }
 
         // 检查是否为最后一个push_key
         if(this.$config.setting.push_keys.length === 1) {
-            return this.$error('不能删除最后一个push_key！');
+            return this._jsonError('不能删除最后一个push_key！');
         }
 
         // 删除push_key
@@ -182,20 +196,20 @@ class Setting extends Base
         const admin_token = this.$config.setting.admin_token;
 
         await this._writeSettingFile(push_keys_str, user, password, admin_token);
-        this.$success('push_key删除成功！', {push_key: push_key});
+        return this._jsonSuccess('push_key删除成功！', {push_key: push_key});
     }
 
     async list() {
         if(!this.$config.setting) {
-            return this.$error('系统未安装！');
+            return this._jsonError('系统未安装！');
         }
 
         // 支持两种鉴权方式：登录用户或admin_token
         if(!this._isLogin() && !this._isValidToken()) {
-            return this.$error('请先登录或提供有效的admin_token！');
+            return this._jsonError('请先登录或提供有效的admin_token！');
         }
 
-        this.$success('获取push_key列表成功！', {
+        return this._jsonSuccess('获取push_key列表成功！', {
             push_keys: this.$config.setting.push_keys,
             count: this.$config.setting.push_keys.length
         });
@@ -215,6 +229,28 @@ class Setting extends Base
             result += chars.charAt(Math.floor(Math.random() * chars.length));
         }
         return result;
+    }
+
+    // JSON格式成功响应
+    _jsonSuccess(message, data = null) {
+        this.ctx.type = 'application/json';
+        this.ctx.body = JSON.stringify({
+            state: true,
+            code: 200,
+            msg: message,
+            data: data
+        });
+    }
+
+    // JSON格式错误响应
+    _jsonError(message, code = 400) {
+        this.ctx.type = 'application/json';
+        this.ctx.body = JSON.stringify({
+            state: false,
+            code: code,
+            msg: message,
+            data: null
+        });
     }
 
     async _writeSettingFile(push_key, user, password, admin_token = '') {
